@@ -91,11 +91,4 @@ impl ImageData {
             Self::Rgba32F { .. } => "RGBA32F",
         }
     }
-
-    pub fn is_windowable(&self) -> bool {
-        !matches!(
-            self,
-            Self::Gray8 { .. } | Self::Rgb8 { .. } | Self::Rgba8 { .. }
-        )
-    }
 }

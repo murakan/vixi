@@ -2,18 +2,20 @@
 name = "vixi"
 version = "0.1.0"
 edition = "2021"
-description = "A CPU-based image viewer for JPG, PNG, and TIFF images."
+description = "A command-driven image viewer with a native window."
 license = "MIT"
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-eframe = "0.28"
-egui = "0.28"
+crossterm = "0.29"
+futures-executor = "0.3"
 image = { version = "0.25", default-features = true }
 tiff = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wgpu = "0.20"
+winit = "0.29"
 
 [dev-dependencies]
 tempfile = "3"

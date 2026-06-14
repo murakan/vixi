@@ -2,9 +2,14 @@
 // This software is released under the MIT License, see LICENSE.
 
 mod app;
+mod commands;
+mod config;
 mod image_io;
 mod pixel;
+mod plugins;
 mod render;
+mod tui;
+mod viewer;
 mod windowing;
 
 use std::path::PathBuf;
@@ -12,8 +17,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 
-use crate::app::{ViewerApp, ViewerOptions};
+use crate::app::{AppState, ViewerOptions};
 use crate::image_io::load_image;
+use crate::viewer::{run_viewer, DisplayBackend};
 use crate::windowing::AutoWindowMode;
 
 const COPYRIGHT: &str = "Copyright (c) 2026 Kan Murata";
@@ -55,12 +61,23 @@ struct Cli {
     /// Start fitted to the window.
     #[arg(long)]
     fit: bool,
+
+    /// Window system backend. On Linux, auto prefers X11 when DISPLAY is available.
+    #[arg(long, value_enum, default_value_t = BackendArg::Auto)]
+    backend: BackendArg,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum AutoWindowArg {
     Minmax,
     Percentile,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BackendArg {
+    Auto,
+    Wayland,
+    X11,
 }
 
 impl From<AutoWindowArg> for AutoWindowMode {
@@ -71,6 +88,16 @@ impl From<AutoWindowArg> for AutoWindowMode {
                 low: 1.0,
                 high: 99.0,
             },
+        }
+    }
+}
+
+impl From<BackendArg> for DisplayBackend {
+    fn from(value: BackendArg) -> Self {
+        match value {
+            BackendArg::Auto => Self::Auto,
+            BackendArg::Wayland => Self::Wayland,
+            BackendArg::X11 => Self::X11,
         }
     }
 }
@@ -96,11 +123,6 @@ fn main() -> Result<()> {
         fit: cli.fit,
     };
 
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(
-        &format!("vixi {}", env!("VIXI_VERSION")),
-        native_options,
-        Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, image, options)))),
-    )
-    .map_err(|err| anyhow::anyhow!("failed to start viewer: {err}"))
+    let app = AppState::new(image, options);
+    run_viewer(app, cli.backend.into())
 }

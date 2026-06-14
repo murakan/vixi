@@ -1,10 +1,15 @@
 // Copyright (c) 2026 Kan Murata
 // This software is released under the MIT License, see LICENSE.
 
-use egui::ColorImage;
-
 use crate::pixel::ImageData;
 use crate::windowing::{map_to_u8, Window};
+
+#[derive(Debug, Clone)]
+pub struct RgbaFrame {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DisplayTransform {
@@ -20,14 +25,6 @@ impl DisplayTransform {
 
     pub fn rotate_right(&mut self) {
         self.quarter_turns = (self.quarter_turns + 1) % 4;
-    }
-
-    pub fn toggle_flip_x(&mut self) {
-        self.flip_x = !self.flip_x;
-    }
-
-    pub fn toggle_flip_y(&mut self) {
-        self.flip_y = !self.flip_y;
     }
 
     pub fn reset(&mut self) {
@@ -47,18 +44,6 @@ impl DisplayTransform {
     }
 
     fn source_xy(self, x: u32, y: u32, source_width: u32, source_height: u32) -> (u32, u32) {
-        let (display_width, display_height) = self.display_dimensions(source_width, source_height);
-        let x = if self.flip_x {
-            display_width - 1 - x
-        } else {
-            x
-        };
-        let y = if self.flip_y {
-            display_height - 1 - y
-        } else {
-            y
-        };
-
         match self.quarter_turns {
             0 => (x, y),
             1 => (y, source_height - 1 - x),
@@ -69,12 +54,12 @@ impl DisplayTransform {
     }
 }
 
-pub fn render_to_color_image(
+pub fn render_to_rgba(
     image: &ImageData,
     window: Window,
     invert: bool,
     transform: DisplayTransform,
-) -> ColorImage {
+) -> RgbaFrame {
     let (width, height) = image.dimensions();
     let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
 
@@ -134,7 +119,52 @@ pub fn render_to_color_image(
         rgba = transform_rgba(&rgba, width, height, transform);
     }
 
-    ColorImage::from_rgba_unmultiplied([display_width as usize, display_height as usize], &rgba)
+    RgbaFrame {
+        width: display_width,
+        height: display_height,
+        data: rgba,
+    }
+}
+
+pub fn rasterize_view(
+    source: &RgbaFrame,
+    target_width: u32,
+    target_height: u32,
+    view: View,
+) -> Vec<u8> {
+    let mut target = vec![20; target_width as usize * target_height as usize * 4];
+    for px in target.chunks_exact_mut(4) {
+        px[3] = 255;
+    }
+
+    if source.width == 0 || source.height == 0 || target_width == 0 || target_height == 0 {
+        return target;
+    }
+
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let sx = view.center_x + (x as f32 + 0.5 - target_width as f32 / 2.0) / view.zoom;
+            let sy = view.center_y + (y as f32 + 0.5 - target_height as f32 / 2.0) / view.zoom;
+            if sx < 0.0 || sy < 0.0 || sx >= source.width as f32 || sy >= source.height as f32 {
+                continue;
+            }
+
+            let sx = sx.floor() as u32;
+            let sy = sy.floor() as u32;
+            let src = (sy as usize * source.width as usize + sx as usize) * 4;
+            let dst = (y as usize * target_width as usize + x as usize) * 4;
+            target[dst..dst + 4].copy_from_slice(&source.data[src..src + 4]);
+        }
+    }
+
+    target
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct View {
+    pub center_x: f32,
+    pub center_y: f32,
+    pub zoom: f32,
 }
 
 fn transform_rgba(
@@ -198,16 +228,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rotates_and_flips_display_rgba() {
+    fn rotates_display_rgba() {
         let source = [
             1, 1, 1, 255, 2, 2, 2, 255, 3, 3, 3, 255, 4, 4, 4, 255, 5, 5, 5, 255, 6, 6, 6, 255,
         ];
         let mut transform = DisplayTransform::default();
         transform.rotate_right();
-        transform.toggle_flip_x();
 
         let target = transform_rgba(&source, 2, 3, transform);
         let values: Vec<u8> = target.chunks_exact(4).map(|px| px[0]).collect();
-        assert_eq!(values, vec![1, 3, 5, 2, 4, 6]);
+        assert_eq!(values, vec![5, 3, 1, 6, 4, 2]);
     }
 }
