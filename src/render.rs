@@ -34,6 +34,18 @@ impl DisplayTransform {
         *self = Self::default();
     }
 
+    pub fn rotation_degrees(self) -> u32 {
+        self.quarter_turns as u32 * 90
+    }
+
+    pub fn flip_x(self) -> bool {
+        self.flip_x
+    }
+
+    pub fn flip_y(self) -> bool {
+        self.flip_y
+    }
+
     fn is_identity(self) -> bool {
         self == Self::default()
     }

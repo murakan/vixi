@@ -9,6 +9,14 @@ CPU-based image viewer for Linux shell workflows.
 - TIFF 8-bit, 16-bit, and 32-bit float
 - Multipage TIFF
 
+## Architecture
+
+The image is displayed in a windowing-system window, while all control happens
+from the terminal. Launching `vixi` opens the display window and starts a REPL in
+the terminal: you type commands, and a TUI status panel above the prompt reflects
+the current state. The display window is intentionally control-free — it only
+shows the image.
+
 ## Usage
 
 ```bash
@@ -19,18 +27,18 @@ cargo run -- path/to/image.tif --auto-window minmax
 vixi path/to/image.tif
 ```
 
-## Controls
+## Terminal commands
 
-- Mouse wheel: zoom
-- Right drag on image: windowing (horizontal: width, vertical: center)
-- Scroll bars: pan
-- `[` / `]` or left/right arrows: previous/next TIFF page
-- `R`: reset windowing
-- `I`: invert
-- `F`: fit to window
-- `Q` / `E`: rotate left/right
-- `H` / `V`: flip horizontal/vertical
-- `0`: reset rotation and flips
+Type these at the `vixi>` prompt (`help` shows the full list):
+
+- `next` / `n`, `prev` / `p`, `page <index>`: page navigation (zero-based)
+- `zoom in|out|reset|<factor>`, `zoom fit` / `fit`: zoom control
+- `pan <dx> <dy>`, `pan reset`: move the view
+- `window <center> <width>`, `window center <v>`, `window width <v>`: windowing
+- `reset`: auto windowing, `autowindow minmax|percentile`: auto mode
+- `invert`: toggle inverted intensity
+- `rotate left|right` (`rl` / `rr`), `flip x|y`, `orient reset`
+- `status` / `info`, `help`, `quit` (or Ctrl-D)
 
 ## Notes
 

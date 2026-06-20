@@ -2,18 +2,23 @@
 // This software is released under the MIT License, see LICENSE.
 
 mod app;
+mod command;
 mod image_io;
 mod pixel;
 mod render;
+mod tui;
 mod windowing;
 
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 
 use crate::app::{ViewerApp, ViewerOptions};
 use crate::image_io::load_image;
+use crate::tui::{run_repl, ControlChannels};
 use crate::windowing::AutoWindowMode;
 
 const COPYRIGHT: &str = "Copyright (c) 2026 Kan Murata";
@@ -96,11 +101,33 @@ fn main() -> Result<()> {
         fit: cli.fit,
     };
 
+    // The terminal owns control: commands flow to the display window, status
+    // snapshots flow back, and the window hands us its egui context so the REPL
+    // can wake it on demand.
+    let (command_tx, command_rx) = mpsc::channel();
+    let (status_tx, status_rx) = mpsc::channel();
+    let (context_tx, context_rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        run_repl(ControlChannels {
+            commands: command_tx,
+            status: status_rx,
+            context: context_rx,
+        });
+    });
+
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         &format!("vixi {}", env!("VIXI_VERSION")),
         native_options,
-        Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, image, options)))),
+        Box::new(move |cc| {
+            let _ = context_tx.send(cc.egui_ctx.clone());
+            Ok(Box::new(ViewerApp::new(
+                cc, image, options, command_rx, status_tx,
+            )))
+        }),
     )
     .map_err(|err| anyhow::anyhow!("failed to start viewer: {err}"))
+    // When the window closes, returning from `main` tears down the process and
+    // the REPL thread with it (it may be parked on a blocking stdin read).
 }

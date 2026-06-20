@@ -3,7 +3,7 @@
 
 use crate::pixel::ImageData;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AutoWindowMode {
     MinMax,
     Percentile { low: f32, high: f32 },
