@@ -27,6 +27,17 @@ pub struct StatusSnapshot {
     pub flip_x: bool,
     pub flip_y: bool,
     pub auto_window: String,
+    pub video: Option<VideoStatus>,
+}
+
+/// Playback state shown for video sources.
+#[derive(Debug, Clone)]
+pub struct VideoStatus {
+    pub playing: bool,
+    pub speed: f64,
+    pub position_secs: f64,
+    pub duration_secs: f64,
+    pub fps: f64,
 }
 
 /// Channels shared between the terminal control thread and the display window.
@@ -137,20 +148,34 @@ fn render(snapshot: &StatusSnapshot, message: &str) {
     let rule = "─".repeat(48);
     out.push_str(&format!(" vixi — {}\n", snapshot.path));
     out.push_str(&format!(" {rule}\n"));
-    let unit = if snapshot.delay_ms.is_some() {
-        "Frame"
+    if let Some(video) = &snapshot.video {
+        out.push_str(&format!(
+            " State    {}   speed {:.2}x\n",
+            if video.playing { "playing" } else { "paused" },
+            video.speed
+        ));
+        out.push_str(&format!(
+            " Time     {} / {}   {:.2} fps\n",
+            format_time(video.position_secs),
+            format_time(video.duration_secs),
+            video.fps
+        ));
     } else {
-        "Page"
-    };
-    out.push_str(&format!(
-        " {unit:<8} {} / {}{}\n",
-        snapshot.page,
-        snapshot.page_count.saturating_sub(1),
-        match snapshot.delay_ms {
-            Some(delay) => format!("   delay {delay}ms"),
-            None => String::new(),
-        }
-    ));
+        let unit = if snapshot.delay_ms.is_some() {
+            "Frame"
+        } else {
+            "Page"
+        };
+        out.push_str(&format!(
+            " {unit:<8} {} / {}{}\n",
+            snapshot.page,
+            snapshot.page_count.saturating_sub(1),
+            match snapshot.delay_ms {
+                Some(delay) => format!("   delay {delay}ms"),
+                None => String::new(),
+            }
+        ));
+    }
     out.push_str(&format!(
         " Size     {} x {}   {}\n",
         snapshot.width, snapshot.height, snapshot.sample
@@ -186,6 +211,14 @@ fn render(snapshot: &StatusSnapshot, message: &str) {
     let _ = io::stdout().flush();
 }
 
+fn format_time(secs: f64) -> String {
+    if !secs.is_finite() || secs <= 0.0 {
+        return "0:00".to_owned();
+    }
+    let total = secs.round() as u64;
+    format!("{}:{:02}", total / 60, total % 60)
+}
+
 fn on_off(value: bool) -> &'static str {
     if value {
         "on"
@@ -211,6 +244,10 @@ fn help_text() -> String {
         "  rotate left|right             rotate (rl / rr)",
         "  flip x|y                      flip",
         "  orient reset                  reset rotation and flips",
+        "  play / pause / toggle         video playback control",
+        "  step                          advance one video frame",
+        "  seek <s> | seek +<s> | -<s>   seek (absolute or relative seconds)",
+        "  speed <multiplier>            playback speed",
         "  status / info / s             refresh the status panel",
         "  help / h                      this help",
         "  quit / q                      quit (or Ctrl-D)",

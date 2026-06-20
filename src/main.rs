@@ -7,19 +7,41 @@ mod image_io;
 mod pixel;
 mod render;
 mod tui;
+#[cfg(feature = "video")]
+mod video;
 mod windowing;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 
-use crate::app::{ViewerApp, ViewerOptions};
+use crate::app::{Content, ViewerApp, ViewerOptions};
 use crate::image_io::load_image;
 use crate::tui::{run_repl, ControlChannels};
 use crate::windowing::AutoWindowMode;
+
+/// File extensions handled by the video pipeline rather than the image loader.
+#[cfg(feature = "video")]
+const VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "flv", "mpg", "mpeg", "m2v", "ts", "m2ts",
+    "mts", "ogv", "3gp",
+];
+
+#[cfg(feature = "video")]
+fn is_video_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .map(|ext| VIDEO_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+#[cfg(not(feature = "video"))]
+fn is_video_path(_path: &Path) -> bool {
+    false
+}
 
 const COPYRIGHT: &str = "Copyright (c) 2026 Kan Murata";
 const LICENSE_NOTICE: &str = "This software is released under the MIT License, see LICENSE.";
@@ -91,14 +113,22 @@ fn main() -> Result<()> {
     eprintln!("{COPYRIGHT}");
     eprintln!("{LICENSE_NOTICE}");
 
-    let image = load_image(&cli.path)?;
     let options = ViewerOptions {
-        page: cli.page,
         window_center: cli.window_center,
         window_width: cli.window_width,
         auto_window: cli.auto_window.into(),
         invert: cli.invert,
         fit: cli.fit,
+    };
+
+    // Still images are decoded up front so any error is reported before a window
+    // opens. Video is opened later inside the creation closure because it needs
+    // the egui context to wake the window when frames arrive.
+    let path = cli.path.clone();
+    let still_image = if is_video_path(&path) {
+        None
+    } else {
+        Some(load_image(&path)?)
     };
 
     // The terminal owns control: commands flow to the display window, status
@@ -116,18 +146,44 @@ fn main() -> Result<()> {
         });
     });
 
+    let page = cli.page;
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         &format!("vixi {}", env!("VIXI_VERSION")),
         native_options,
         Box::new(move |cc| {
             let _ = context_tx.send(cc.egui_ctx.clone());
+            let content = build_content(still_image, &path, page, cc)
+                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { err.into() })?;
             Ok(Box::new(ViewerApp::new(
-                cc, image, options, command_rx, status_tx,
+                cc, content, options, command_rx, status_tx,
             )))
         }),
     )
     .map_err(|err| anyhow::anyhow!("failed to start viewer: {err}"))
     // When the window closes, returning from `main` tears down the process and
     // the REPL thread with it (it may be parked on a blocking stdin read).
+}
+
+fn build_content(
+    still_image: Option<pixel::LoadedImage>,
+    path: &Path,
+    page: usize,
+    _cc: &eframe::CreationContext<'_>,
+) -> Result<Content> {
+    if let Some(image) = still_image {
+        return Ok(Content::image(image, page));
+    }
+
+    #[cfg(feature = "video")]
+    {
+        let handle = video::VideoHandle::open(path, _cc.egui_ctx.clone())?;
+        Ok(Content::video(handle, PathBuf::from(path)))
+    }
+
+    #[cfg(not(feature = "video"))]
+    {
+        let _ = path;
+        anyhow::bail!("video support is not enabled in this build")
+    }
 }

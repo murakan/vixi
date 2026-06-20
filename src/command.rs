@@ -32,6 +32,14 @@ pub enum Command {
     FlipX,
     FlipY,
     OrientReset,
+    // Video playback (ignored for still images).
+    Play,
+    Pause,
+    TogglePlay,
+    Seek(f64),
+    SeekRelative(f64),
+    Speed(f64),
+    Step,
 }
 
 /// Parse a single line of REPL input into a [`Command`].
@@ -64,6 +72,12 @@ pub fn parse_command(line: &str) -> Result<Option<Command>, String> {
         "rr" => Command::RotateRight,
         "flip" => parse_flip(&rest)?,
         "orient" => parse_orient(&rest)?,
+        "play" => Command::Play,
+        "pause" => Command::Pause,
+        "toggle" | "space" => Command::TogglePlay,
+        "step" => Command::Step,
+        "seek" => parse_seek(&rest)?,
+        "speed" => Command::Speed(parse_speed(arg(&rest, 0, "speed <multiplier>")?)?),
         other => return Err(format!("unknown command: '{other}' (type 'help')")),
     };
 
@@ -150,6 +164,25 @@ fn parse_orient(rest: &[&str]) -> Result<Command, String> {
     }
 }
 
+fn parse_seek(rest: &[&str]) -> Result<Command, String> {
+    let value = arg(rest, 0, "seek <seconds> | seek +<seconds> | seek -<seconds>")?;
+    let seconds = parse_float(value)?;
+    // A leading sign means a relative seek; a bare number is absolute.
+    if value.starts_with('+') || value.starts_with('-') {
+        Ok(Command::SeekRelative(seconds as f64))
+    } else {
+        Ok(Command::Seek(seconds as f64))
+    }
+}
+
+fn parse_speed(value: &str) -> Result<f64, String> {
+    let speed = parse_float(value)?;
+    if speed <= 0.0 {
+        return Err("speed must be a positive number".to_owned());
+    }
+    Ok(speed as f64)
+}
+
 fn arg<'a>(rest: &[&'a str], index: usize, usage: &str) -> Result<&'a str, String> {
     rest.get(index)
         .copied()
@@ -205,6 +238,22 @@ mod tests {
         assert_eq!(parse_command("zoom 2.5"), Ok(Some(Command::ZoomSet(2.5))));
         assert_eq!(parse_command("pan 10 -5"), Ok(Some(Command::Pan(10.0, -5.0))));
         assert_eq!(parse_command("pan reset"), Ok(Some(Command::PanReset)));
+    }
+
+    #[test]
+    fn parses_playback_commands() {
+        assert_eq!(parse_command("play"), Ok(Some(Command::Play)));
+        assert_eq!(parse_command("seek 30"), Ok(Some(Command::Seek(30.0))));
+        assert_eq!(
+            parse_command("seek +5"),
+            Ok(Some(Command::SeekRelative(5.0)))
+        );
+        assert_eq!(
+            parse_command("seek -5"),
+            Ok(Some(Command::SeekRelative(-5.0)))
+        );
+        assert_eq!(parse_command("speed 2"), Ok(Some(Command::Speed(2.0))));
+        assert!(parse_command("speed 0").is_err());
     }
 
     #[test]

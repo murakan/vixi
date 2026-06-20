@@ -11,11 +11,41 @@ CPU-based image viewer for Linux shell workflows.
 - TIFF 8-bit, 16-bit, and 32-bit float, including multipage TIFF
 - BMP, ICO, TGA, DDS, PNM, QOI, farbfeld
 - HDR and OpenEXR (high dynamic range)
+- Video (MP4, MKV, MOV, WebM, AVI, and more) via FFmpeg, with streaming playback
 
-Formats are detected from file contents, so a misnamed extension is handled
-correctly. Animated and multipage inputs are navigated with the `next` / `prev`
-/ `page` commands; each frame's display delay is shown in the status panel.
-Timed playback arrives with video support.
+Image formats are detected from file contents, so a misnamed extension is
+handled correctly. Animated and multipage inputs are navigated with the
+`next` / `prev` / `page` commands; each frame's display delay is shown in the
+status panel.
+
+## Video
+
+Video files are decoded by a streaming decoder thread (FFmpeg/libav) and start
+playing automatically. Control playback from the terminal:
+
+- `play`, `pause`, `toggle`: start/stop playback
+- `seek <s>`, `seek +<s>`, `seek -<s>`: jump to an absolute or relative position
+- `speed <multiplier>`: change playback speed (e.g. `speed 2`, `speed 0.5`)
+- `step`: advance a single frame while paused (`next` also steps; `prev` nudges back)
+
+The status panel shows the playback state, position/duration, and frame rate.
+
+### Building with video support
+
+Video support is behind the default `video` feature and links against the
+FFmpeg development libraries (libavcodec, libavformat, libavutil, libswscale)
+via `ffmpeg-next`. Install them before building, for example on Debian/Ubuntu:
+
+```bash
+sudo apt-get install -y pkg-config libavcodec-dev libavformat-dev \
+    libavutil-dev libswscale-dev
+```
+
+To build without video support (no FFmpeg dependency), disable the feature:
+
+```bash
+cargo build --no-default-features
+```
 
 ## Architecture
 
@@ -33,6 +63,7 @@ cargo run -- path/to/image.tif --page 2
 cargo run -- path/to/image.tif --window-center 2048 --window-width 4096
 cargo run -- path/to/image.tif --auto-window minmax
 vixi path/to/image.tif
+vixi path/to/video.mp4
 ```
 
 ## Terminal commands
