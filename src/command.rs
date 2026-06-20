@@ -51,7 +51,7 @@ pub fn parse_command(line: &str) -> Result<Option<Command>, String> {
         "quit" | "q" | "exit" => Command::Quit,
         "next" | "n" => Command::NextPage,
         "prev" | "p" => Command::PrevPage,
-        "page" => Command::GotoPage(parse_index(arg(&rest, 0, "page <番号>")?)?),
+        "page" => Command::GotoPage(parse_index(arg(&rest, 0, "page <index>")?)?),
         "zoom" | "z" => parse_zoom(&rest)?,
         "fit" | "f" => Command::Fit,
         "pan" => parse_pan(&rest)?,
@@ -64,14 +64,14 @@ pub fn parse_command(line: &str) -> Result<Option<Command>, String> {
         "rr" => Command::RotateRight,
         "flip" => parse_flip(&rest)?,
         "orient" => parse_orient(&rest)?,
-        other => return Err(format!("不明なコマンド: '{other}' ('help' で一覧)")),
+        other => return Err(format!("unknown command: '{other}' (type 'help')")),
     };
 
     Ok(Some(command))
 }
 
 fn parse_zoom(rest: &[&str]) -> Result<Command, String> {
-    let arg = arg(rest, 0, "zoom in|out|reset|fit|<倍率>")?;
+    let arg = arg(rest, 0, "zoom in|out|reset|fit|<factor>")?;
     Ok(match arg.to_ascii_lowercase().as_str() {
         "in" | "+" => Command::ZoomIn,
         "out" | "-" => Command::ZoomOut,
@@ -80,7 +80,7 @@ fn parse_zoom(rest: &[&str]) -> Result<Command, String> {
         value => {
             let factor = parse_float(value)?;
             if factor <= 0.0 {
-                return Err("ズーム倍率は正の数で指定してください".to_owned());
+                return Err("zoom factor must be a positive number".to_owned());
             }
             Command::ZoomSet(factor)
         }
@@ -99,14 +99,14 @@ fn parse_pan(rest: &[&str]) -> Result<Command, String> {
 fn parse_window(rest: &[&str]) -> Result<Command, String> {
     match rest.first().map(|v| v.to_ascii_lowercase()) {
         Some(key) if key == "center" || key == "c" => Ok(Command::SetWindowCenter(parse_float(
-            arg(rest, 1, "window center <値>")?,
+            arg(rest, 1, "window center <value>")?,
         )?)),
         Some(key) if key == "width" || key == "w" => Ok(Command::SetWindowWidth(parse_float(
-            arg(rest, 1, "window width <値>")?,
+            arg(rest, 1, "window width <value>")?,
         )?)),
         _ => {
-            let center = parse_float(arg(rest, 0, "window <中心> <幅>")?)?;
-            let width = parse_float(arg(rest, 1, "window <中心> <幅>")?)?;
+            let center = parse_float(arg(rest, 0, "window <center> <width>")?)?;
+            let width = parse_float(arg(rest, 1, "window <center> <width>")?)?;
             Ok(Command::SetWindow { center, width })
         }
     }
@@ -120,7 +120,7 @@ fn parse_auto_window(rest: &[&str]) -> Result<Command, String> {
             low: 1.0,
             high: 99.0,
         }),
-        other => return Err(format!("不明な自動調整モード: '{other}'")),
+        other => return Err(format!("unknown auto-window mode: '{other}'")),
     })
 }
 
@@ -129,7 +129,7 @@ fn parse_rotate(rest: &[&str]) -> Result<Command, String> {
     Ok(match arg.to_ascii_lowercase().as_str() {
         "left" | "l" => Command::RotateLeft,
         "right" | "r" => Command::RotateRight,
-        other => return Err(format!("回転方向は left/right で指定: '{other}'")),
+        other => return Err(format!("rotation must be left or right: '{other}'")),
     })
 }
 
@@ -138,7 +138,7 @@ fn parse_flip(rest: &[&str]) -> Result<Command, String> {
     Ok(match arg.to_ascii_lowercase().as_str() {
         "x" | "h" => Command::FlipX,
         "y" | "v" => Command::FlipY,
-        other => return Err(format!("反転軸は x/y で指定: '{other}'")),
+        other => return Err(format!("flip axis must be x or y: '{other}'")),
     })
 }
 
@@ -146,26 +146,26 @@ fn parse_orient(rest: &[&str]) -> Result<Command, String> {
     let arg = arg(rest, 0, "orient reset")?;
     match arg.to_ascii_lowercase().as_str() {
         "reset" | "0" => Ok(Command::OrientReset),
-        other => Err(format!("orient は reset のみ対応: '{other}'")),
+        other => Err(format!("orient only supports reset: '{other}'")),
     }
 }
 
 fn arg<'a>(rest: &[&'a str], index: usize, usage: &str) -> Result<&'a str, String> {
     rest.get(index)
         .copied()
-        .ok_or_else(|| format!("引数が足りません: {usage}"))
+        .ok_or_else(|| format!("missing argument: {usage}"))
 }
 
 fn parse_index(value: &str) -> Result<usize, String> {
     value
         .parse::<usize>()
-        .map_err(|_| format!("整数で指定してください: '{value}'"))
+        .map_err(|_| format!("expected an integer: '{value}'"))
 }
 
 fn parse_float(value: &str) -> Result<f32, String> {
     value
         .parse::<f32>()
-        .map_err(|_| format!("数値で指定してください: '{value}'"))
+        .map_err(|_| format!("expected a number: '{value}'"))
 }
 
 #[cfg(test)]

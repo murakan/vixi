@@ -2,7 +2,7 @@
 name = "vixi"
 version = "0.1.0"
 edition = "2021"
-description = "A CPU-based image viewer for JPG, PNG, and TIFF images."
+description = "A CPU-based, terminal-controlled image viewer with broad format support."
 license = "MIT"
 
 [dependencies]

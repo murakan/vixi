@@ -6,33 +6,101 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use image::DynamicImage;
+use image::codecs::gif::GifDecoder;
+use image::codecs::png::PngDecoder;
+use image::codecs::webp::WebPDecoder;
+use image::{AnimationDecoder, DynamicImage, ImageFormat, ImageReader};
 use tiff::decoder::{Decoder, DecodingResult};
 use tiff::ColorType;
 
 use crate::pixel::{ImageData, ImagePage, LoadedImage};
 
 pub fn load_image(path: &Path) -> Result<LoadedImage> {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    // Detect the format from the file contents (falling back to the extension)
+    // so multipage and animated formats are routed to the right decoder
+    // regardless of how the file is named.
+    let reader = ImageReader::open(path)
+        .with_context(|| format!("failed to open {}", path.display()))?
+        .with_guessed_format()
+        .with_context(|| format!("failed to detect format of {}", path.display()))?;
 
-    if matches!(extension.as_str(), "tif" | "tiff") {
-        load_tiff(path)
-    } else {
-        load_dynamic(path)
+    match reader.format() {
+        Some(ImageFormat::Tiff) => load_tiff(path),
+        Some(ImageFormat::Gif) => {
+            let decoder = GifDecoder::new(reader.into_inner()).context("failed to read GIF")?;
+            with_pages(path, frames_to_pages(decoder)?)
+        }
+        Some(ImageFormat::WebP) => {
+            let decoder = WebPDecoder::new(reader.into_inner()).context("failed to read WebP")?;
+            if decoder.has_animation() {
+                with_pages(path, frames_to_pages(decoder)?)
+            } else {
+                let image = DynamicImage::from_decoder(decoder).context("failed to read WebP")?;
+                single_page(path, from_dynamic(image)?)
+            }
+        }
+        Some(ImageFormat::Png) => {
+            let decoder = PngDecoder::new(reader.into_inner()).context("failed to read PNG")?;
+            if decoder.is_apng().unwrap_or(false) {
+                let decoder = decoder.apng().context("failed to read APNG")?;
+                with_pages(path, frames_to_pages(decoder)?)
+            } else {
+                let image = DynamicImage::from_decoder(decoder).context("failed to read PNG")?;
+                single_page(path, from_dynamic(image)?)
+            }
+        }
+        _ => load_dynamic(path),
     }
 }
 
 fn load_dynamic(path: &Path) -> Result<LoadedImage> {
     let image = image::open(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let data = from_dynamic(image)?;
+    single_page(path, from_dynamic(image)?)
+}
+
+fn single_page(path: &Path, data: ImageData) -> Result<LoadedImage> {
     Ok(LoadedImage {
         path: PathBuf::from(path),
-        pages: vec![ImagePage { data }],
+        pages: vec![ImagePage {
+            data,
+            delay_ms: None,
+        }],
     })
+}
+
+fn with_pages(path: &Path, pages: Vec<ImagePage>) -> Result<LoadedImage> {
+    if pages.is_empty() {
+        bail!("image contains no frames");
+    }
+    Ok(LoadedImage {
+        path: PathBuf::from(path),
+        pages,
+    })
+}
+
+fn frames_to_pages<'a>(decoder: impl AnimationDecoder<'a>) -> Result<Vec<ImagePage>> {
+    let frames = decoder
+        .into_frames()
+        .collect_frames()
+        .context("failed to decode animation frames")?;
+
+    Ok(frames
+        .into_iter()
+        .map(|frame| {
+            let (numer, denom) = frame.delay().numer_denom_ms();
+            let delay_ms = (denom != 0).then(|| numer / denom);
+            let buffer = frame.into_buffer();
+            let (width, height) = (buffer.width(), buffer.height());
+            ImagePage {
+                data: ImageData::Rgba8 {
+                    width,
+                    height,
+                    data: buffer.into_raw(),
+                },
+                delay_ms,
+            }
+        })
+        .collect())
 }
 
 fn from_dynamic(image: DynamicImage) -> Result<ImageData> {
@@ -93,7 +161,10 @@ fn load_tiff(path: &Path) -> Result<LoadedImage> {
             .context("failed to read TIFF color type")?;
         let result = decoder.read_image().context("failed to decode TIFF page")?;
         let data = from_tiff_result(dimensions, color_type, result)?;
-        pages.push(ImagePage { data });
+        pages.push(ImagePage {
+            data,
+            delay_ms: None,
+        });
 
         if !decoder.more_images() {
             break;
@@ -227,6 +298,37 @@ fn check_len(image: ImageData, expected: usize) -> Result<ImageData> {
         bail!("decoded image length mismatch: expected {expected}, got {actual}");
     }
     Ok(image)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::codecs::gif::GifEncoder;
+    use image::{Delay, Frame, RgbaImage};
+
+    #[test]
+    fn loads_animated_gif_frames_as_pages() {
+        let mut file = tempfile::Builder::new()
+            .suffix(".gif")
+            .tempfile()
+            .expect("temp file");
+
+        let frames = (0..3).map(|index| {
+            let buffer = RgbaImage::from_pixel(4, 4, image::Rgba([index * 40, 0, 0, 255]));
+            Frame::from_parts(buffer, 0, 0, Delay::from_numer_denom_ms(100, 1))
+        });
+        {
+            let mut encoder = GifEncoder::new(file.as_file_mut());
+            encoder.encode_frames(frames).expect("encode gif frames");
+        }
+
+        let loaded = load_image(file.path()).expect("load gif");
+        assert_eq!(loaded.pages.len(), 3);
+        for page in &loaded.pages {
+            assert_eq!(page.data.dimensions(), (4, 4));
+            assert_eq!(page.delay_ms, Some(100));
+        }
+    }
 }
 
 fn decoding_result_name(result: &DecodingResult) -> &'static str {

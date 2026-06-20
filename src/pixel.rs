@@ -12,6 +12,10 @@ pub struct LoadedImage {
 #[derive(Debug, Clone)]
 pub struct ImagePage {
     pub data: ImageData,
+    /// Frame display duration in milliseconds for animated formats
+    /// (GIF, APNG, animated WebP). `None` for still pages such as
+    /// multipage TIFF.
+    pub delay_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

@@ -13,6 +13,7 @@ pub struct StatusSnapshot {
     pub path: String,
     pub page: usize,
     pub page_count: usize,
+    pub delay_ms: Option<u32>,
     pub width: u32,
     pub height: u32,
     pub sample: String,
@@ -51,7 +52,7 @@ pub fn run_repl(channels: ControlChannels) {
         Some(snapshot) => snapshot,
         None => return,
     };
-    let mut message = "'help' でコマンド一覧を表示します".to_owned();
+    let mut message = "type 'help' for the command list".to_owned();
 
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines();
@@ -88,7 +89,7 @@ pub fn run_repl(channels: ControlChannels) {
                     message = "ok".to_owned();
                 }
                 None => {
-                    message = "表示ウィンドウが閉じられました。終了します。".to_owned();
+                    message = "display window closed; exiting.".to_owned();
                     render(&snapshot, &message);
                     break;
                 }
@@ -136,10 +137,19 @@ fn render(snapshot: &StatusSnapshot, message: &str) {
     let rule = "─".repeat(48);
     out.push_str(&format!(" vixi — {}\n", snapshot.path));
     out.push_str(&format!(" {rule}\n"));
+    let unit = if snapshot.delay_ms.is_some() {
+        "Frame"
+    } else {
+        "Page"
+    };
     out.push_str(&format!(
-        " Page     {} / {}\n",
+        " {unit:<8} {} / {}{}\n",
         snapshot.page,
-        snapshot.page_count.saturating_sub(1)
+        snapshot.page_count.saturating_sub(1),
+        match snapshot.delay_ms {
+            Some(delay) => format!("   delay {delay}ms"),
+            None => String::new(),
+        }
     ));
     out.push_str(&format!(
         " Size     {} x {}   {}\n",
@@ -186,24 +196,24 @@ fn on_off(value: bool) -> &'static str {
 
 fn help_text() -> String {
     [
-        "コマンド一覧:",
-        "  next / n                 次のページ",
-        "  prev / p                 前のページ",
-        "  page <番号>              指定ページへ (0始まり)",
-        "  zoom in|out|reset|<倍率> ズーム",
-        "  zoom fit / fit / f       ウィンドウに合わせる",
-        "  pan <dx> <dy>            表示位置を移動 (pan reset で原点)",
-        "  window <中心> <幅>       ウィンドウ調整",
-        "  window center <値> / window width <値>",
-        "  reset / r                ウィンドウ自動調整",
-        "  autowindow minmax|percentile  自動調整モード",
-        "  invert                   白黒反転トグル",
-        "  rotate left|right        回転 (rl / rr)",
-        "  flip x|y                 反転",
-        "  orient reset             回転/反転をリセット",
-        "  status / info / s        状態を再表示",
-        "  help / h                 このヘルプ",
-        "  quit / q                 終了 (Ctrl-D でも終了)",
+        "Commands:",
+        "  next / n                      next page or frame",
+        "  prev / p                      previous page or frame",
+        "  page <index>                  jump to page/frame (zero-based)",
+        "  zoom in|out|reset|<factor>    zoom",
+        "  zoom fit / fit / f            fit to the window",
+        "  pan <dx> <dy>                 move the view (pan reset to recenter)",
+        "  window <center> <width>       set windowing",
+        "  window center <value> / window width <value>",
+        "  reset / r                     auto windowing",
+        "  autowindow minmax|percentile  auto-window mode",
+        "  invert                        toggle inverted intensity",
+        "  rotate left|right             rotate (rl / rr)",
+        "  flip x|y                      flip",
+        "  orient reset                  reset rotation and flips",
+        "  status / info / s             refresh the status panel",
+        "  help / h                      this help",
+        "  quit / q                      quit (or Ctrl-D)",
     ]
     .join("\n")
 }

@@ -181,6 +181,7 @@ impl ViewerApp {
             path: self.image.path.display().to_string(),
             page: self.page,
             page_count: self.image.pages.len(),
+            delay_ms: self.image.pages[self.page].delay_ms,
             width,
             height,
             sample: self.current_image().sample_label().to_owned(),

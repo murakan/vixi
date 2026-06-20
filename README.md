@@ -4,10 +4,18 @@ CPU-based image viewer for Linux shell workflows.
 
 ## Supported formats
 
-- JPG
-- PNG 8-bit and 16-bit
-- TIFF 8-bit, 16-bit, and 32-bit float
-- Multipage TIFF
+- JPEG
+- PNG 8-bit and 16-bit, plus animated APNG (frames exposed as pages)
+- GIF, including animated GIF (frames exposed as pages)
+- WebP, including animated WebP (frames exposed as pages)
+- TIFF 8-bit, 16-bit, and 32-bit float, including multipage TIFF
+- BMP, ICO, TGA, DDS, PNM, QOI, farbfeld
+- HDR and OpenEXR (high dynamic range)
+
+Formats are detected from file contents, so a misnamed extension is handled
+correctly. Animated and multipage inputs are navigated with the `next` / `prev`
+/ `page` commands; each frame's display delay is shown in the status panel.
+Timed playback arrives with video support.
 
 ## Architecture
 
