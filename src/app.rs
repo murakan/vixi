@@ -150,6 +150,9 @@ impl ViewerApp {
     }
 
     fn set_page(&mut self, page: usize) {
+        // `Content` has a single variant when built without the `video`
+        // feature, which makes this `if let` irrefutable in that configuration.
+        #[cfg_attr(not(feature = "video"), allow(irrefutable_let_patterns))]
         let changed = if let Content::Image(content) = &mut self.content {
             let page = page.min(content.image.pages.len().saturating_sub(1));
             if content.page != page {
